@@ -44,10 +44,16 @@
         return await response.json();
     }
 
-    async function fetchLeaderboard() {
-        const data = await apiCall(`/leaderboard/${TOURN_ID}/${YEAR}`);
-        return data.results.leaderboard || [];  // From sample: leaderboard under results
-    }
+  const TOURN_ID = '828';  // AT&T Pebble Beach Pro-Am 2026
+const YEAR = '2026';
+
+// In fetchLeaderboard():
+async function fetchLeaderboard() {
+    const data = await apiCall(`/leaderboard/${TOURN_ID}/${YEAR}`);
+    console.log('Leaderboard response:', data);  // Debug: check in F12 Console
+    // The leaderboard is under data.results.leaderboard (from your sample)
+    return data.results?.leaderboard || data.leaderboard || data || [];
+}
 
     function groupByTeeTime(players) {
         const groups = {};
