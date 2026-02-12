@@ -26,128 +26,71 @@
 
     <script>
         const API_BASE = 'https://golf-leaderboard-data.p.rapidapi.com';
-        const API_KEY = '400bc5a764msh71553cc3da7c3e9p1e506ejsn6bff53036f07';  // Your key - keep private in production!
-        const YEAR = '2026';
+const API_KEY = '400bc5a764msh71553cc3da7c3e9p1e506ejsn6bff53036f07';
+const YEAR = '2026';
 
-        let allGroups = [];
-        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+let allGroups = [];
+let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
 
-        async function apiCall(endpoint) {
-            const response = await fetch(API_BASE + endpoint, {
-                headers: {
-                    'x-rapidapi-key': API_KEY,
-                    'x-rapidapi-host': 'golf-leaderboard-data.p.rapidapi.com'
-                }
-            });
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status} - ${response.statusText}`);
-            }
-            return await response.json();
+async function apiCall(endpoint) {
+    const response = await fetch(API_BASE + endpoint, {
+        headers: {
+            'x-rapidapi-key': API_KEY,
+            'x-rapidapi-host': 'golf-leaderboard-data.p.rapidapi.com'
         }
+    });
+    if (!response.ok) {
+        throw new Error(`API error: ${response.status} - ${response.statusText} for ${endpoint}`);
+    }
+    return await response.json();
+}
 
-        async function getCurrentTournamentId() {
-            const data = await apiCall(`/tournaments/pga/${YEAR}`);
-            const tournaments = data.tournaments || data.fixtures || [];  // API may use 'tournaments' or 'fixtures'
-            const active = tournaments.find(t => t.status?.toLowerCase().includes('progress') || 
-                                                (new Date(t.start_date) <= new Date() && new Date(t.end_date) >= new Date()));
-            if (!active) throw new Error('No in-progress PGA tournament found today.');
-            document.getElementById('status').textContent = `Loaded: ${active.name || 'Current Event'} (Round ${active.current_round || '?'})`;
-            return active.tournament_id || active.id || active.tournamen_id;  // Common ID fields
-        }
+async function getCurrentTournamentId() {
+    try {
+        const data = await apiCall(`/fixtures/pga/${YEAR}`);
+        const tournaments = data.fixtures || data.tournaments || data || [];
+        const active = tournaments.find(t => t.active === true || 
+                                            t.status?.toLowerCase().includes('progress') ||
+                                            (new Date(t.start_date || t.date_start) <= new Date() && new Date(t.end_date || t.date_end) >= new Date()));
+        if (!active) throw new Error('No active tournament in fixtures response.');
+        document.getElementById('status').textContent = `Loaded: ${active.name || active.tournament_name || 'Current PGA Event'} (Round ${active.current_round || '?'})`;
+        console.log('Active tournament data:', active); // Debug in console
+        return active.tournament_id || active.id || active.tourn_id;
+    } catch (err) {
+        console.error('Fixtures fetch failed:', err);
+        // Optional fallback: try a different path or hardcoded for testing
+        // return 'YOUR_KNOWN_TOURNAMENT_ID_HERE'; // e.g., test with one from playground
+        throw err;
+    }
+}
 
-        async function getLeaderboard(tid) {
-            const data = await apiCall(`/leaderboard/${tid}/${YEAR}`);
-            return data.leaderboard || data.players || [];  // Array of player objects
-        }
+// ... (keep getLeaderboard, groupByTeeTime, getGroupWinner, renderGroups the same as before)
 
-        function groupByTeeTime(players) {
-            const groups = {};
-            players.forEach(player => {
-                const tee = player.tee_time || 'TBD';
-                if (!groups[tee]) groups[tee] = [];
-                groups[tee].push(player);
-            });
-            return Object.entries(groups).map(([teeTime, players]) => ({ teeTime, players }));
-        }
+async function loadData() {
+    const status = document.getElementById('status');
+    status.className = '';
+    status.textContent = 'Fetching live tournament fixtures & leaderboard...';
+    try {
+        const tid = await getCurrentTournamentId();
+        console.log('Using tournament ID:', tid);
+        const players = await apiCall(`/leaderboard/${tid}/${YEAR}`);
+        const leaderboardData = players.leaderboard || players.players || players || [];
+        console.log('Leaderboard players count:', leaderboardData.length);
+        allGroups = groupByTeeTime(leaderboardData);
 
-        function getGroupWinner(players) {
-            if (!players.length) return null;
-            let best = players[0];
-            players.forEach(p => {
-                const score = parseInt(p.total_to_par || p.score_to_par || p.total || 0);
-                if (score < parseInt(best.total_to_par || best.score_to_par || best.total || 0)) {
-                    best = p;
-                }
-            });
-            return best.player_name;
-        }
-
-        function renderGroups(groups, containerId) {
-            const container = document.getElementById(containerId);
-            container.innerHTML = '';
-            groups.forEach(group => {
-                const isFav = favorites.includes(group.teeTime);
-                const div = document.createElement('div');
-                div.className = `group ${isFav ? 'favorite' : ''}`;
-
-                const header = document.createElement('h3');
-                header.textContent = `${group.teeTime} (${group.players.length}-ball)`;
-                const star = document.createElement('span');
-                star.className = 'star';
-                star.textContent = isFav ? '★' : '☆';
-                star.onclick = () => {
-                    const idx = favorites.indexOf(group.teeTime);
-                    if (idx > -1) favorites.splice(idx, 1);
-                    else favorites.push(group.teeTime);
-                    localStorage.setItem('favorites', JSON.stringify(favorites));
-                    loadData();  // Re-render
-                };
-                header.appendChild(star);
-                div.appendChild(header);
-
-                const winnerName = getGroupWinner(group.players);
-                group.players.forEach(player => {
-                    const pEl = document.createElement('div');
-                    pEl.className = 'player';
-                    const score = player.total_to_par || player.score_to_par || player.total || 'E';
-                    const thru = player.thru || player.thru_hole || player.holes_played || '?';
-                    pEl.innerHTML = `${player.player_name}: <strong>${score}</strong> thru ${thru}`;
-                    if (player.player_name === winnerName) pEl.classList.add('winner');
-                    div.appendChild(pEl);
-                });
-                container.appendChild(div);
-            });
-        }
-
-        async function loadData() {
-            const status = document.getElementById('status');
-            status.className = '';
-            status.textContent = 'Fetching live tournament data...';
-            try {
-                const tid = await getCurrentTournamentId();
-                const players = await getLeaderboard(tid);
-                allGroups = groupByTeeTime(players);
-
-                // Favorites at top
-                renderGroups(allGroups.filter(g => favorites.includes(g.teeTime)), 'favorites');
-
-                // Filtered all groups
-                const query = document.getElementById('search').value.toLowerCase();
-                const filtered = query 
-                    ? allGroups.filter(g => g.teeTime.toLowerCase().includes(query) || 
-                                            g.players.some(p => p.player_name.toLowerCase().includes(query)))
-                    : allGroups;
-                renderGroups(filtered, 'all-groups');
-            } catch (err) {
-                console.error(err);
-                status.textContent = `Error loading data: ${err.message}. Check console (F12) or try again in a minute. PGA event: AT&T Pebble Beach Pro-Am is live now.`;
-                status.className = 'error';
-            }
-        }
-
-        document.getElementById('search').addEventListener('input', loadData);
-        loadData();
-        setInterval(loadData, 60000);  // Refresh every 60 seconds for live updates
+        renderGroups(allGroups.filter(g => favorites.includes(g.teeTime)), 'favorites');
+        const query = document.getElementById('search').value.toLowerCase();
+        const filtered = query 
+            ? allGroups.filter(g => g.teeTime.toLowerCase().includes(query) || 
+                                    g.players.some(p => p.player_name.toLowerCase().includes(query)))
+            : allGroups;
+        renderGroups(filtered, 'all-groups');
+    } catch (err) {
+        console.error('Load data error:', err);
+        status.textContent = `Error: ${err.message}. Open F12 Console for details. PGA is live — try refreshing or check RapidAPI playground for correct endpoints/IDs.`;
+        status.className = 'error';
+    }
+}
     </script>
 </body>
 </html>
