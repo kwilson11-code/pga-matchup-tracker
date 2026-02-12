@@ -30,13 +30,14 @@
     let allGroups = [];
     let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
 
-    async function fetchLeaderboard() {
-        const response = await fetch(PGA_FEED);
-        if (!response.ok) throw new Error(`PGA feed error: ${response.status}`);
-        const data = await response.json();
-        console.log('PGA leaderboard data:', data);
-        return data.leaderboard?.players || [];
-    }
+ async function fetchLeaderboard() {
+    const proxy = 'https://cors-anywhere.herokuapp.com/';  // Free public CORS proxy (may need to visit once to activate)
+    const url = proxy + 'https://statdata.pgatour.com/r/current/leaderboard-v2mini.json';
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Proxy/PGA error: ${response.status}`);
+    const data = await response.json();
+    console.log('Proxied PGA data:', data);
+    return data.leaderboard?.players || [];
 
     function groupByTeeTime(players) {
         const groups = {};
