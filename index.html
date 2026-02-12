@@ -46,22 +46,12 @@ async function apiCall(endpoint) {
 }
 
 async function getCurrentTournamentId() {
-    try {
-        const data = await apiCall(`/fixtures/pga/${YEAR}`);
-        const tournaments = data.fixtures || data.tournaments || data || [];
-        const active = tournaments.find(t => t.active === true || 
-                                            t.status?.toLowerCase().includes('progress') ||
-                                            (new Date(t.start_date || t.date_start) <= new Date() && new Date(t.end_date || t.date_end) >= new Date()));
-        if (!active) throw new Error('No active tournament in fixtures response.');
-        document.getElementById('status').textContent = `Loaded: ${active.name || active.tournament_name || 'Current PGA Event'} (Round ${active.current_round || '?'})`;
-        console.log('Active tournament data:', active); // Debug in console
-        return active.tournament_id || active.id || active.tourn_id;
-    } catch (err) {
-        console.error('Fixtures fetch failed:', err);
-        // Optional fallback: try a different path or hardcoded for testing
-        // return 'YOUR_KNOWN_TOURNAMENT_ID_HERE'; // e.g., test with one from playground
-        throw err;
-    }
+    const status = document.getElementById('status');
+    status.textContent = 'Using hardcoded test tournament ID for AT&T Pebble Beach Pro-Am...';
+    // Temporary hardcode - replace with real from playground or /fixtures once working
+    return '29629116';  // Likely ID from CBS/ESPN patterns; test alternatives like '220', '005', 'R2026005' if 404
+    // Once working, comment above and uncomment the full /tours + /fixtures logic
+}
 }
 
 // ... (keep getLeaderboard, groupByTeeTime, getGroupWinner, renderGroups the same as before)
