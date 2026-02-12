@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGA Matchup Tracker</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #search { width: 100%; padding: 10px; margin-bottom: 20px; }
+        .group { border: 1px solid #ccc; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
+        .favorite { background-color: #ffffcc; } /* Highlight favorites */
+        .star { cursor: pointer; font-size: 20px; }
+        .player { margin: 5px 0; }
+        .winner { font-weight: bold; color: green; }
+    </style>
+</head>
+<body>
+    <h1>PGA 3-Ball/2-Ball Matchup Tracker</h1>
+    <input type="text" id="search" placeholder="Search by player or tee time...">
+    <div id="favorites"></div>
+    <div id="all-groups"></div>
+
+    <script>
+        const API_BASE = 'https://statdata.pgatour.com';
+
+        let allGroups = [];
+        let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+
+        async function getCurrentTid() {
+            const response = await fetch(`${API_BASE}/r/current/message.json`);
+            const data = await response.json();
+            return data.tid; // e.g., '005'
+        }
+
+        async function fetchLeaderboard(tid) {
+            const response = await fetch(`${API_BASE}/r/${tid}/leaderboard-v2mini.json`);
+            const data = await response.json();
+            return data.leaderboard.players; // Array of players with tee_time, total, thru, player_name, etc.
+        }
+
+        function groupByTeeTime(players) {
+            const groups = {};
+            players.forEach(player => {
+                const teeTime = player.tee_time || 'Unknown';
+                if (!groups[teeTime]) groups[teeTime] = [];
+                groups[teeTime].push(player);
+            });
+            return Object.entries(groups).map(([teeTime, players]) => ({ teeTime, players }));
+        }
+
+        function determineWinner(players) {
+            let minScore = Infinity;
+            let winner = null;
+            players.forEach(p => {
+                const score = parseInt(p.total) || 0; // total is relative to par (e.g., -3)
+                if (score < minScore) {
+                    minScore = score;
+                    winner = p.player_name;
+                }
+            });
+            return winner;
+        }
+
+        function renderGroups(groups, containerId, isFavorites = false) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            groups.forEach(group => {
+                const div = document.createElement('div');
+                div.classList.add('group');
+                if (favorites.includes(group.teeTime)) div.classList.add('favorite');
+
+                const star = document.createElement('span');
+                star.classList.add('star');
+                star.textContent = favorites.includes(group.teeTime) ? '★' : '☆';
+                star.onclick = () => toggleFavorite(group.teeTime);
+
+                const header = document.createElement('h3');
+                header.textContent = `${group.teeTime} Group (${group.players.length}-ball)`;
+                header.appendChild(star);
+
+                div.appendChild(header);
+
+                group.players.forEach(player => {
+                    const pDiv = document.createElement('div');
+                    pDiv.classList.add('player');
+                    const score = player.total ? player.total : 'E'; // Relative to par
+                    const thru = player.thru || 0; // Holes completed
+                    pDiv.textContent = `${player.player_name}: ${score} (through ${thru} holes)`;
+                    if (player.player_name === determineWinner(group.players)) pDiv.classList.add('winner');
+                    div.appendChild(pDiv);
+                });
+
+                container.appendChild(div);
+            });
+        }
+
+        function toggleFavorite(teeTime) {
+            const index = favorites.indexOf(teeTime);
+            if (index > -1) favorites.splice(index, 1);
+            else favorites.push(teeTime);
+            localStorage.setItem('favorites', JSON.stringify(favorites));
+            loadData();
+        }
+
+        function filterGroups(query) {
+            return allGroups.filter(group => 
+                group.teeTime.toLowerCase().includes(query.toLowerCase()) ||
+                group.players.some(p => p.player_name.toLowerCase().includes(query.toLowerCase()))
+            );
+        }
+
+        async function loadData() {
+            try {
+                const tid = await getCurrentTid();
+                const players = await fetchLeaderboard(tid);
+                allGroups = groupByTeeTime(players);
+
+                const favGroups = allGroups.filter(g => favorites.includes(g.teeTime));
+                renderGroups(favGroups, 'favorites', true);
+
+                const searchQuery = document.getElementById('search').value;
+                const filtered = searchQuery ? filterGroups(searchQuery) : allGroups;
+                renderGroups(filtered, 'all-groups');
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                // You can add a visible error message here if desired, e.g.:
+                // document.getElementById('all-groups').innerHTML = '<p style="color:red;">Unable to load PGA data right now. Try refreshing.</p>';
+            }
+        }
+
+        document.getElementById('search').addEventListener('input', loadData);
+        loadData(); // Initial load
+        setInterval(loadData, 60000); // Refresh every minute
+    </script>
+</body>
+</html>
