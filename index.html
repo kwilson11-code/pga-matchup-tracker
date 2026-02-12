@@ -33,6 +33,7 @@ let allGroups = [];
 let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
 
 async function apiCall(endpoint) {
+    console.log(`Fetching: ${endpoint}`);
     const response = await fetch(API_BASE + endpoint, {
         headers: {
             'x-rapidapi-key': API_KEY,
@@ -40,44 +41,63 @@ async function apiCall(endpoint) {
         }
     });
     if (!response.ok) {
-        throw new Error(`API error: ${response.status} - ${response.statusText} for ${endpoint}`);
+        const errText = await response.text();
+        console.error(`Fetch failed for ${endpoint}: ${response.status} ${errText}`);
+        throw new Error(`API error: ${response.status} for ${endpoint}`);
     }
-    return await response.json();
+    const data = await response.json();
+    console.log(`Response from ${endpoint}:`, data);
+    return data;
 }
 
 async function getCurrentTournamentId() {
     const status = document.getElementById('status');
-    status.textContent = 'Using hardcoded test tournament ID for AT&T Pebble Beach Pro-Am...';
-    // Temporary hardcode - replace with real from playground or /fixtures once working
-    return '29629116';  // Likely ID from CBS/ESPN patterns; test alternatives like '220', '005', 'R2026005' if 404
-    // Once working, comment above and uncomment the full /tours + /fixtures logic
+    status.textContent = 'Testing hardcoded tournament ID for current event...';
+    // Hardcoded for AT&T Pebble Beach Pro-Am 2026 (from PGA Tour URL pattern: R2026005; test alternatives if fails)
+    const testTid = 'R2026005'; // Try this first; alternatives below if 404
+    // '220' or '29629116' or '005' or '296' – change and re-test
+    console.log('Using test tournament ID:', testTid);
+    return testTid;
 }
 
 async function loadData() {
     const status = document.getElementById('status');
-    status.className = '';
-    status.textContent = 'Fetching live tournament fixtures & leaderboard...';
+    status.textContent = 'Fetching leaderboard...';
     try {
         const tid = await getCurrentTournamentId();
-        console.log('Using tournament ID:', tid);
-        const players = await apiCall(`/leaderboard/${tid}/${YEAR}`);
-        const leaderboardData = players.leaderboard || players.players || players || [];
-        console.log('Leaderboard players count:', leaderboardData.length);
-        allGroups = groupByTeeTime(leaderboardData);
+        const data = await apiCall(`/leaderboard/${tid}/${YEAR}`);
+        const players = data.leaderboard || data.players || data.results || data || [];
+        console.log('Players array length:', players.length);
+        if (players.length > 0) console.log('First player sample:', players[0]);
 
-        renderGroups(allGroups.filter(g => favorites.includes(g.teeTime)), 'favorites');
-        const query = document.getElementById('search').value.toLowerCase();
-        const filtered = query 
-            ? allGroups.filter(g => g.teeTime.toLowerCase().includes(query) || 
-                                    g.players.some(p => p.player_name.toLowerCase().includes(query)))
-            : allGroups;
-        renderGroups(filtered, 'all-groups');
+        if (players.length === 0) throw new Error('No players in leaderboard response');
+
+        // Your grouping/render logic here (copy from previous if needed)
+        // Example placeholder – adjust fields based on console sample
+        allGroups = players.reduce((groups, player) => {
+            const tee = player.tee_time || player.teeTime || 'Unknown';
+            if (!groups[tee]) groups[tee] = [];
+            groups[tee].push(player);
+            return groups;
+        }, {});
+        allGroups = Object.entries(allGroups).map(([teeTime, players]) => ({teeTime, players}));
+
+        // Render favorites
+        const favContainer = document.getElementById('favorites');
+        favContainer.innerHTML = '<h2>Favorites</h2>';
+        // ... add render code for favorites and all-groups similarly
+
+        status.textContent = 'Data loaded! ' + players.length + ' players found.';
     } catch (err) {
-        console.error('Load data error:', err);
-        status.textContent = `Error: ${err.message}. Open F12 Console for details. PGA is live — try refreshing or check RapidAPI playground for correct endpoints/IDs.`;
-        status.className = 'error';
+        console.error('Load error:', err);
+        status.textContent = `Error: ${err.message}. Check console for details (F12).`;
+        status.style.color = 'red';
     }
 }
+
+document.getElementById('search').addEventListener('input', loadData);
+loadData();
+setInterval(loadData, 60000);
     </script>
 </body>
 </html>
