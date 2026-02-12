@@ -3,157 +3,159 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PGA Matchup Tracker - Live Tee Times & Scores</title>
+    <title>PGA Matchup Tracker</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
         h1 { text-align: center; color: #004d00; }
-        #search { width: 100%; max-width: 500px; padding: 12px; margin: 20px auto; display: block; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
-        #status { text-align: center; font-size: 18px; margin: 20px; font-weight: bold; }
+        #search { width: 100%; max-width: 600px; padding: 12px; margin: 20px auto; display: block; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+        #status { text-align: center; font-weight: bold; margin: 20px; font-size: 18px; }
         .error { color: red; }
-        .group { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 15px auto; max-width: 600px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .favorite { border-color: #ffcc00; background: #fffef0; }
-        .star { cursor: pointer; font-size: 28px; float: right; color: #ffcc00; }
-        .player { margin: 10px 0; font-size: 16px; }
-        .winner { font-weight: bold; color: #006400; background: #e0ffe0; padding: 4px; border-radius: 4px; }
+        .group { background: white; border: 1px solid #ddd; padding: 15px; margin: 15px auto; max-width: 700px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .favorite { border-color: #ffd700; background: #fffacd; }
+        .star { cursor: pointer; font-size: 24px; float: right; color: #ffcc00; }
+        .player { margin: 10px 0; font-size: 16px; padding: 5px; border-radius: 4px; }
+        .winner { font-weight: bold; color: #006400; background: #e0ffe0; }
     </style>
 </head>
 <body>
     <h1>PGA 3-Ball/2-Ball Matchup Tracker</h1>
-    <input type="text" id="search" placeholder="Search player name or tee time (e.g., Scheffler, 11:45)...">
-    <div id="status">Loading live PGA data for today's tournament...</div>
+    <input type="text" id="search" placeholder="Search by player name or tee time (e.g., Hisatsune, 07:30)...">
+    <div id="status">Loading live leaderboard...</div>
     <div id="favorites"></div>
     <div id="all-groups"></div>
 
     <script>
-    const API_BASE = 'https://golf-leaderboard-data.p.rapidapi.com';
-    const API_KEY = '400bc5a764msh71553cc3da7c3e9p1e506ejsn6bff53036f07';
-    const YEAR = '2026';
-    const TOURN_ID = 'R2026005';  // Hardcoded for current AT&T Pebble Beach Pro-Am - change if needed
+        const API_BASE = 'https://golf-leaderboard-data.p.rapidapi.com';
+        const API_KEY = '400bc5a764msh71553cc3da7c3e9p1e506ejsn6bff53036f07';
+        const TOURN_ID = '828';  // AT&T Pebble Beach Pro-Am 2026
+        const YEAR = '2026';
 
-    let allGroups = [];
-    let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        let allGroups = [];
+        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
 
-    async function apiCall(endpoint) {
-        const response = await fetch(`${API_BASE}${endpoint}`, {
-            headers: {
-                'x-rapidapi-key': API_KEY,
-                'x-rapidapi-host': 'golf-leaderboard-data.p.rapidapi.com'
-            }
-        });
-        if (!response.ok) throw new Error(`API error: ${response.status}`);
-        return await response.json();
-    }
-
-  const TOURN_ID = '828';  // AT&T Pebble Beach Pro-Am 2026
-const YEAR = '2026';
-
-// In fetchLeaderboard():
-async function fetchLeaderboard() {
-    const data = await apiCall(`/leaderboard/${TOURN_ID}/${YEAR}`);
-    console.log('Leaderboard response:', data);  // Debug: check in F12 Console
-    // The leaderboard is under data.results.leaderboard (from your sample)
-    return data.results?.leaderboard || data.leaderboard || data || [];
-}
-
-    function groupByTeeTime(players) {
-        const groups = {};
-        players.forEach(player => {
-            const round1 = player.rounds?.[0] || {};
-            const teeTime = round1.tee_time_local || 'TBD';
-            if (!groups[teeTime]) groups[teeTime] = [];
-            groups[teeTime].push(player);
-        });
-        return Object.entries(groups).map(([teeTime, players]) => ({ teeTime, players }));
-    }
-
-    function determineWinner(players) {
-        let minScore = Infinity;
-        let winner = null;
-        players.forEach(p => {
-            const score = parseInt(p.total_to_par) || 0;
-            if (score < minScore) {
-                minScore = score;
-                winner = `${p.first_name} ${p.last_name}`;
-            }
-        });
-        return winner;
-    }
-
-    function renderGroups(groups, containerId, isFavorites = false) {
-        const container = document.getElementById(containerId);
-        container.innerHTML = '';
-        groups.forEach(group => {
-            const div = document.createElement('div');
-            div.classList.add('group');
-            if (favorites.includes(group.teeTime)) div.classList.add('favorite');
-
-            const star = document.createElement('span');
-            star.classList.add('star');
-            star.textContent = favorites.includes(group.teeTime) ? '★' : '☆';
-            star.onclick = () => toggleFavorite(group.teeTime);
-
-            const header = document.createElement('h3');
-            header.textContent = `${group.teeTime} Group (${group.players.length}-ball)`;
-            header.appendChild(star);
-            div.appendChild(header);
-
-            const winner = determineWinner(group.players);
-            group.players.forEach(player => {
-                const pDiv = document.createElement('div');
-                pDiv.classList.add('player');
-                const name = `${player.first_name} ${player.last_name}`;
-                const score = player.total_to_par || 'E';
-                const thru = player.holes_played || 0;
-                pDiv.textContent = `${name}: ${score} (through ${thru} holes)`;
-                if (name === winner) pDiv.classList.add('winner');
-                div.appendChild(pDiv);
+        async function apiCall(endpoint) {
+            const response = await fetch(API_BASE + endpoint, {
+                headers: {
+                    'x-rapidapi-key': API_KEY,
+                    'x-rapidapi-host': 'golf-leaderboard-data.p.rapidapi.com'
+                }
             });
-            container.appendChild(div);
-        });
-    }
-
-    function toggleFavorite(teeTime) {
-        const index = favorites.indexOf(teeTime);
-        if (index > -1) favorites.splice(index, 1);
-        else favorites.push(teeTime);
-        localStorage.setItem('favorites', JSON.stringify(favorites));
-        loadData();
-    }
-
-    function filterGroups(query) {
-        return allGroups.filter(group => 
-            group.teeTime.toLowerCase().includes(query.toLowerCase()) ||
-            group.players.some(p => `${p.first_name} ${p.last_name}`.toLowerCase().includes(query.toLowerCase()))
-        );
-    }
-
-    async function loadData() {
-        const status = document.getElementById('status');
-        status.textContent = 'Loading live leaderboard...';
-        status.classList.remove('error');
-        try {
-            const players = await fetchLeaderboard();
-            if (players.length === 0) throw new Error('No players returned');
-            allGroups = groupByTeeTime(players);
-
-            const favGroups = allGroups.filter(g => favorites.includes(g.teeTime));
-            renderGroups(favGroups, 'favorites', true);
-
-            const searchQuery = document.getElementById('search').value;
-            const filtered = searchQuery ? filterGroups(searchQuery) : allGroups;
-            renderGroups(filtered, 'all-groups');
-
-            status.textContent = 'Loaded! Scroll for groups.';
-        } catch (error) {
-            console.error('Error:', error);
-            status.textContent = `Error loading data: ${error.message}. Try refreshing or check API key/tournament ID.`;
-            status.classList.add('error');
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API error: ${response.status} - ${errorText}`);
+            }
+            return await response.json();
         }
-    }
 
-    document.getElementById('search').addEventListener('input', loadData);
-    loadData();
-    setInterval(loadData, 60000);
-</script>
+        async function fetchLeaderboard() {
+            const data = await apiCall(`/leaderboard/${TOURN_ID}/${YEAR}`);
+            console.log('Full leaderboard response:', data); // Debug in F12 Console
+            return data.results?.leaderboard || data.leaderboard || [];
+        }
+
+        function groupByTeeTime(players) {
+            const groups = {};
+            players.forEach(player => {
+                const round1 = player.rounds?.[0] || {};
+                const teeTime = round1.tee_time_local || 'TBD';
+                if (!groups[teeTime]) groups[teeTime] = [];
+                groups[teeTime].push(player);
+            });
+            return Object.entries(groups).map(([teeTime, players]) => ({ teeTime, players }));
+        }
+
+        function determineWinner(players) {
+            let minScore = Infinity;
+            let winner = null;
+            players.forEach(p => {
+                const score = parseInt(p.total_to_par) || 0;
+                if (score < minScore) {
+                    minScore = score;
+                    winner = `${p.first_name} ${p.last_name}`;
+                }
+            });
+            return winner;
+        }
+
+        function renderGroups(groups, containerId, isFavorites = false) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            groups.forEach(group => {
+                const div = document.createElement('div');
+                div.classList.add('group');
+                if (favorites.includes(group.teeTime)) div.classList.add('favorite');
+
+                const star = document.createElement('span');
+                star.classList.add('star');
+                star.textContent = favorites.includes(group.teeTime) ? '★' : '☆';
+                star.onclick = () => toggleFavorite(group.teeTime);
+
+                const header = document.createElement('h3');
+                header.textContent = `${group.teeTime} Group (${group.players.length}-ball)`;
+                header.appendChild(star);
+
+                div.appendChild(header);
+
+                const winner = determineWinner(group.players);
+                group.players.forEach(player => {
+                    const pDiv = document.createElement('div');
+                    pDiv.classList.add('player');
+                    const name = `${player.first_name} ${player.last_name}`;
+                    const score = player.total_to_par || 'E';
+                    const thru = player.holes_played || 0;
+                    pDiv.textContent = `${name}: ${score} (through ${thru} holes)`;
+                    if (name === winner) pDiv.classList.add('winner');
+                    div.appendChild(pDiv);
+                });
+
+                container.appendChild(div);
+            });
+        }
+
+        function toggleFavorite(teeTime) {
+            const index = favorites.indexOf(teeTime);
+            if (index > -1) favorites.splice(index, 1);
+            else favorites.push(teeTime);
+            localStorage.setItem('favorites', JSON.stringify(favorites));
+            loadData();
+        }
+
+        function filterGroups(query) {
+            return allGroups.filter(group => 
+                group.teeTime.toLowerCase().includes(query.toLowerCase()) ||
+                group.players.some(p => `${p.first_name} ${p.last_name}`.toLowerCase().includes(query.toLowerCase()))
+            );
+        }
+
+        async function loadData() {
+            const status = document.getElementById('status');
+            status.textContent = 'Loading live leaderboard...';
+            status.classList.remove('error');
+            try {
+                const players = await fetchLeaderboard();
+                if (players.length === 0) throw new Error('No players returned from API');
+                allGroups = groupByTeeTime(players);
+
+                // Render favorites first
+                const favGroups = allGroups.filter(g => favorites.includes(g.teeTime));
+                renderGroups(favGroups, 'favorites', true);
+
+                // Render all or filtered
+                const searchQuery = document.getElementById('search').value;
+                const filtered = searchQuery ? filterGroups(searchQuery) : allGroups;
+                renderGroups(filtered, 'all-groups');
+
+                status.textContent = `Loaded ${players.length} players! Scroll for groups.`;
+            } catch (error) {
+                console.error('Error loading data:', error);
+                status.textContent = `Error loading data: ${error.message}. Check console (F12) for details.`;
+                status.classList.add('error');
+            }
+        }
+
+        document.getElementById('search').addEventListener('input', loadData);
+        loadData(); // Initial load
+        setInterval(loadData, 60000); // Refresh every minute
+    </script>
 </body>
 </html>
