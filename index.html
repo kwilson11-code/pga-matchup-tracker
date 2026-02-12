@@ -51,13 +51,9 @@ async function apiCall(endpoint) {
 }
 
 async function getCurrentTournamentId() {
-    const status = document.getElementById('status');
-    status.textContent = 'Testing hardcoded tournament ID for current event...';
-    // Hardcoded for AT&T Pebble Beach Pro-Am 2026 (from PGA Tour URL pattern: R2026005; test alternatives if fails)
-    const testTid = 'R2026005'; // Try this first; alternatives below if 404
-    // '220' or '29629116' or '005' or '296' – change and re-test
-    console.log('Using test tournament ID:', testTid);
-    return testTid;
+    document.getElementById('status').textContent = 'Testing hardcoded ID for AT&T Pebble Beach Pro-Am (R2026005)...';
+    return 'R2026005';
+}
 }
 
 async function loadData() {
