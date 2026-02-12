@@ -25,137 +25,117 @@
     <div id="all-groups"></div>
 
     <script>
-        const API_BASE = 'https://golf-leaderboard-data.p.rapidapi.com';
-        const API_KEY = '400bc5a764msh71553cc3da7c3e9p1e506ejsn6bff53036f07';
-        const TOURN_ID = '828';  // AT&T Pebble Beach Pro-Am 2026
-        const YEAR = '2026';
+    const PGA_FEED = 'https://statdata.pgatour.com/r/current/leaderboard-v2mini.json';
 
-        let allGroups = [];
-        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+    let allGroups = [];
+    let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
 
-        async function apiCall(endpoint) {
-            const response = await fetch(API_BASE + endpoint, {
-                headers: {
-                    'x-rapidapi-key': API_KEY,
-                    'x-rapidapi-host': 'golf-leaderboard-data.p.rapidapi.com'
-                }
-            });
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API error: ${response.status} - ${errorText}`);
+    async function fetchLeaderboard() {
+        const response = await fetch(PGA_FEED);
+        if (!response.ok) throw new Error(`PGA feed error: ${response.status}`);
+        const data = await response.json();
+        console.log('PGA leaderboard data:', data);
+        return data.leaderboard?.players || [];
+    }
+
+    function groupByTeeTime(players) {
+        const groups = {};
+        players.forEach(player => {
+            const teeTime = player.tee_time || 'Unknown';
+            if (!groups[teeTime]) groups[teeTime] = [];
+            groups[teeTime].push(player);
+        });
+        return Object.entries(groups).map(([teeTime, players]) => ({ teeTime, players }));
+    }
+
+    function determineWinner(players) {
+        let minScore = Infinity;
+        let winner = null;
+        players.forEach(p => {
+            const score = parseInt(p.total) || 0; // relative to par, e.g. -6
+            if (score < minScore) {
+                minScore = score;
+                winner = p.player_name;
             }
-            return await response.json();
-        }
+        });
+        return winner;
+    }
 
-        async function fetchLeaderboard() {
-            const data = await apiCall(`/leaderboard/${TOURN_ID}/${YEAR}`);
-            console.log('Full leaderboard response:', data); // Debug in F12 Console
-            return data.results?.leaderboard || data.leaderboard || [];
-        }
+    function renderGroups(groups, containerId, isFavorites = false) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        groups.forEach(group => {
+            const div = document.createElement('div');
+            div.classList.add('group');
+            if (favorites.includes(group.teeTime)) div.classList.add('favorite');
 
-        function groupByTeeTime(players) {
-            const groups = {};
-            players.forEach(player => {
-                const round1 = player.rounds?.[0] || {};
-                const teeTime = round1.tee_time_local || 'TBD';
-                if (!groups[teeTime]) groups[teeTime] = [];
-                groups[teeTime].push(player);
+            const star = document.createElement('span');
+            star.classList.add('star');
+            star.textContent = favorites.includes(group.teeTime) ? '★' : '☆';
+            star.onclick = () => toggleFavorite(group.teeTime);
+
+            const header = document.createElement('h3');
+            header.textContent = `${group.teeTime} Group (${group.players.length}-ball)`;
+            header.appendChild(star);
+
+            div.appendChild(header);
+
+            const winner = determineWinner(group.players);
+            group.players.forEach(player => {
+                const pDiv = document.createElement('div');
+                pDiv.classList.add('player');
+                const score = player.total || 'E';
+                const thru = player.thru || 0;
+                pDiv.textContent = `${player.player_name}: ${score} (through ${thru} holes)`;
+                if (player.player_name === winner) pDiv.classList.add('winner');
+                div.appendChild(pDiv);
             });
-            return Object.entries(groups).map(([teeTime, players]) => ({ teeTime, players }));
+
+            container.appendChild(div);
+        });
+    }
+
+    function toggleFavorite(teeTime) {
+        const index = favorites.indexOf(teeTime);
+        if (index > -1) favorites.splice(index, 1);
+        else favorites.push(teeTime);
+        localStorage.setItem('favorites', JSON.stringify(favorites));
+        loadData();
+    }
+
+    function filterGroups(query) {
+        return allGroups.filter(group => 
+            group.teeTime.toLowerCase().includes(query.toLowerCase()) ||
+            group.players.some(p => p.player_name.toLowerCase().includes(query.toLowerCase()))
+        );
+    }
+
+    async function loadData() {
+        const status = document.getElementById('status');
+        status.textContent = 'Loading live PGA data...';
+        status.classList.remove('error');
+        try {
+            const players = await fetchLeaderboard();
+            if (players.length === 0) throw new Error('No players returned');
+            allGroups = groupByTeeTime(players);
+
+            renderGroups(allGroups.filter(g => favorites.includes(g.teeTime)), 'favorites', true);
+
+            const searchQuery = document.getElementById('search').value;
+            const filtered = searchQuery ? filterGroups(searchQuery) : allGroups;
+            renderGroups(filtered, 'all-groups');
+
+            status.textContent = `Loaded ${players.length} players!`;
+        } catch (error) {
+            console.error('Error:', error);
+            status.textContent = `Error: ${error.message}. Check console (F12).`;
+            status.classList.add('error');
         }
+    }
 
-        function determineWinner(players) {
-            let minScore = Infinity;
-            let winner = null;
-            players.forEach(p => {
-                const score = parseInt(p.total_to_par) || 0;
-                if (score < minScore) {
-                    minScore = score;
-                    winner = `${p.first_name} ${p.last_name}`;
-                }
-            });
-            return winner;
-        }
-
-        function renderGroups(groups, containerId, isFavorites = false) {
-            const container = document.getElementById(containerId);
-            container.innerHTML = '';
-            groups.forEach(group => {
-                const div = document.createElement('div');
-                div.classList.add('group');
-                if (favorites.includes(group.teeTime)) div.classList.add('favorite');
-
-                const star = document.createElement('span');
-                star.classList.add('star');
-                star.textContent = favorites.includes(group.teeTime) ? '★' : '☆';
-                star.onclick = () => toggleFavorite(group.teeTime);
-
-                const header = document.createElement('h3');
-                header.textContent = `${group.teeTime} Group (${group.players.length}-ball)`;
-                header.appendChild(star);
-
-                div.appendChild(header);
-
-                const winner = determineWinner(group.players);
-                group.players.forEach(player => {
-                    const pDiv = document.createElement('div');
-                    pDiv.classList.add('player');
-                    const name = `${player.first_name} ${player.last_name}`;
-                    const score = player.total_to_par || 'E';
-                    const thru = player.holes_played || 0;
-                    pDiv.textContent = `${name}: ${score} (through ${thru} holes)`;
-                    if (name === winner) pDiv.classList.add('winner');
-                    div.appendChild(pDiv);
-                });
-
-                container.appendChild(div);
-            });
-        }
-
-        function toggleFavorite(teeTime) {
-            const index = favorites.indexOf(teeTime);
-            if (index > -1) favorites.splice(index, 1);
-            else favorites.push(teeTime);
-            localStorage.setItem('favorites', JSON.stringify(favorites));
-            loadData();
-        }
-
-        function filterGroups(query) {
-            return allGroups.filter(group => 
-                group.teeTime.toLowerCase().includes(query.toLowerCase()) ||
-                group.players.some(p => `${p.first_name} ${p.last_name}`.toLowerCase().includes(query.toLowerCase()))
-            );
-        }
-
-        async function loadData() {
-            const status = document.getElementById('status');
-            status.textContent = 'Loading live leaderboard...';
-            status.classList.remove('error');
-            try {
-                const players = await fetchLeaderboard();
-                if (players.length === 0) throw new Error('No players returned from API');
-                allGroups = groupByTeeTime(players);
-
-                // Render favorites first
-                const favGroups = allGroups.filter(g => favorites.includes(g.teeTime));
-                renderGroups(favGroups, 'favorites', true);
-
-                // Render all or filtered
-                const searchQuery = document.getElementById('search').value;
-                const filtered = searchQuery ? filterGroups(searchQuery) : allGroups;
-                renderGroups(filtered, 'all-groups');
-
-                status.textContent = `Loaded ${players.length} players! Scroll for groups.`;
-            } catch (error) {
-                console.error('Error loading data:', error);
-                status.textContent = `Error loading data: ${error.message}. Check console (F12) for details.`;
-                status.classList.add('error');
-            }
-        }
-
-        document.getElementById('search').addEventListener('input', loadData);
-        loadData(); // Initial load
-        setInterval(loadData, 60000); // Refresh every minute
-    </script>
+    document.getElementById('search').addEventListener('input', loadData);
+    loadData();
+    setInterval(loadData, 60000);
+</script>
 </body>
 </html>
